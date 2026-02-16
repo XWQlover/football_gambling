@@ -33,13 +33,31 @@ class LSTMClassifier(nn.Module):
         self.softmax = nn.Softmax(-1)
 
 
-    def forward(self, x,**kwargs):
+    def forward(self, team_a_id, team_b_id, **kwargs):
+        """
+        前向传播
+        Args:
+            team_a_id: (batch_size, seq_len) 主队ID序列
+            team_b_id: (batch_size, seq_len) 客队ID序列
+        Returns:
+            out: (batch_size, seq_len, 3) 预测结果（胜/平/负的概率）
+        """
+        # 通过Embedding层获取球队向量
+        # team_a_emb: (batch_size, seq_len, team_emb_dim)
+        # team_b_emb: (batch_size, seq_len, team_emb_dim)
+        team_a_emb = self.team1_emb(team_a_id)
+        team_b_emb = self.team2_emb(team_b_id)
+        
+        # 拼接两个球队的embedding作为LSTM输入
+        # x: (batch_size, seq_len, team_emb_dim * 2)
+        x = torch.cat([team_a_emb, team_b_emb], dim=-1)
+        
         # LSTM层
         # lstm_out形状: (batch_size, seq_len, hidden_dim)
         # hidden和cell是最后时刻的隐状态和细胞状态
         lstm_out, (hidden, cell) = self.lstm(x)
         # 全连接层和激活函数
-        out = self.fc(lstm_out)  # (batch_size, seq_size, output_dim)
-        out = self.softmax(out)  # (batch_size, seq_size, output_dim)
+        out = self.fc(lstm_out)  # (batch_size, seq_len, 3)
+        out = self.softmax(out)  # (batch_size, seq_len, 3)
 
-        return out.squeeze() # 移除维度为1的维度
+        return out  # 返回每个时间步的预测结果

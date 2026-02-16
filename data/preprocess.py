@@ -22,7 +22,14 @@ if __name__ == "__main__":
                 lambda x:x.replace("https://lottery.sina.com.cn/ai/match/football/base.shtml?matchId=","").replace("&sportsType=football",""))
     for col in ["胜预测值","平预测值","负预测值"]:
         data[col] = data[col].apply(lambda x:str(x).strip("%"))
-    data[["id", '主场', '客场', '比赛', '时间', '主场得分', '客场得分', '胜赔率', '平赔率', '负赔率', '胜预测值','平预测值', '负预测值']].to_csv(f"{PROCESSED_DIR}/competition.csv",index=False)
+    data[["id", '主场', '客场', '比赛', '时间', '主场得分', '客场得分', '胜赔率', '平赔率', '负赔率', '胜预测值','平预测值', '负预测值']].sort_values("时间",ascending=True).to_csv(f"{PROCESSED_DIR}/competition.csv",index=False)
+
+    # 球队token化
+    teams = list(set(data["主场"].tolist() + data["客场"].tolist()))
+    teams.sort()
+    f = open(f"{PROCESSED_DIR}/team_ids","w")
+    for idx,team in enumerate(teams):
+        f.write(str(idx) + '\t' + team + "\n")
 
     data = pd.read_excel(f"{RAW_DIR}/赛前赔率.xlsx", sheet_name=0)
     data = data.dropna(subset=["胜", "负", "平"])
