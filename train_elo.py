@@ -14,52 +14,69 @@ config = {
     'checkpoint_path':'checkpoints/'
 }
 
+
 def calculate_elo_with_draw(
         player1_rating: float,
         player2_rating: float,
-        result: int,  # 结果：'p1_win'=玩家1胜, 'p2_win'=玩家2胜, 'draw'=平
-        k_factor: int = 32
+        diff: int,  # 两队比分差（正数=玩家1净胜，负数=玩家2净胜，0=平局）
+        result: int,  # 简化结果：1=玩家1胜，2=玩家2胜，0=平
+        k_factor: int = 64
 ) -> tuple[float, float]:
     """
-    支持胜/负/平的 ELO 分数计算函数（一次性返回双方新分数）
+    支持胜负平+比分差的 ELO 分数计算函数
 
     参数:
-        player1_rating: 玩家1的当前 ELO 分数
-        player2_rating: 玩家2的当前 ELO 分数
-        result: 比赛结果，可选值：
-                'p1_win'（玩家1胜）、'p2_win'（玩家2胜）、'draw'（平局）
-        k_factor: 分数波动系数（默认32，新手可设50，高分段设20）
+        player1_rating: 玩家1初始ELO分数
+        player2_rating: 玩家2初始ELO分数
+        diff: 比分差（核心！）
+              - 玩家1净胜n球：diff = n（如2-0则diff=2）
+              - 玩家2净胜n球：diff = -n（如0-3则diff=-3）
+              - 平局：diff = 0
+        result: 比赛结果（简化为数字，更易使用）：
+                1 = 玩家1胜，2 = 玩家2胜，0 = 平
+        k_factor: 基础K因子（默认64，可自定义）
 
     返回:
-        tuple: (player1_new_rating, player2_new_rating) → 玩家1、玩家2更新后的分数（保留1位小数）
+        tuple: (player1_new_rating, player2_new_rating) → 双方更新后分数
     """
 
-    # 步骤2：计算双方的预期胜率（ELO 核心公式）
-    # 玩家1预期胜率 = 1 / (1 + 10^((玩家2分数 - 玩家1分数)/400))
+    # 步骤2：计算双方预期胜率（基础ELO公式）
     p1_expected = 1 / (1 + math.pow(10, (player2_rating - player1_rating) / 400))
-    # 玩家2预期胜率 = 1 - 玩家1预期胜率（总和为1）
     p2_expected = 1 - p1_expected
 
-    # 步骤3：根据结果定义双方的实际结果
-    if result == 2:
+    # 步骤3：定义比分差调整系数（核心优化点）
+    # 规则：比分差越大，调整系数越高，分数变化越明显；设置上限避免异常波动
+    def get_diff_coefficient(diff_val: int) -> float:
+        abs_diff = abs(diff_val)
+        # 分级调整：小胜(1球)=1.0，中胜(2-3球)=1.5，大胜(4+球)=2.0
+        if abs_diff == 0:
+            return 1.0  # 平局无调整
+        else:
+            return abs_diff  # 小胜/小负，基础系数
+
+
+    diff_coeff = get_diff_coefficient(diff)
+    print(diff_coeff)
+    # 步骤4：结合结果和比分差计算实际结果
+    if result == 2:  # 玩家1胜
         p1_actual = 1.0
         p2_actual = 0.0
-    elif result == 0:
+    elif result == 0:  # 玩家2胜
         p1_actual = 0.0
         p2_actual = 1.0
-    else:  # draw
+    else:  # 平局
         p1_actual = 0.5
         p2_actual = 0.5
 
-    # 步骤4：计算双方分数变化并更新
-    p1_change = k_factor * (p1_actual - p1_expected)
-    p2_change = k_factor * (p2_actual - p2_expected)
+    # 步骤5：计算分数变化（基础变化 × 比分差调整系数）
+    p1_change = k_factor * diff_coeff * (p1_actual - p1_expected)
+    p2_change = k_factor * diff_coeff * (p2_actual - p2_expected)
 
+    # 步骤6：更新分数并保留1位小数
     p1_new = round(player1_rating + p1_change, 1)
     p2_new = round(player2_rating + p2_change, 1)
 
     return p1_new, p2_new
-
 
 def train():
     """训练主函数"""
@@ -72,12 +89,12 @@ def train():
     print("=" * 50)
     print("加载数据集...")
     # 训练集：只使用训练时间段之前的数据
-    train_data = data[data["时间"] < val_start_time].copy()
-    print(f"训练集数据范围: < {val_start_time}, 样本数: {len(train_data)}")
+    train_data = data[data["时间"] < val_end_time].copy()
+    print(f"训练集数据范围: < {val_end_time}, 样本数: {len(train_data)}")
     train_dataset = MyDataset2(
         data=train_data,
         vocab_file=config['vocab_file'],
-        start_time="2022-01-01", end_time=val_start_time,
+        start_time="2022-01-01", end_time=val_end_time,
         train=True
     )
     # 验证集：只使用验证时间段之前的数据（包含训练数据，但不包含测试数据）
@@ -92,7 +109,7 @@ def train():
     # 4. 初始化模型
     print("=" * 50)
     print("初始化模型...")
-    socre = 1500
+    socre = 1000
     id2score = {k:socre for k,v in train_dataset.id2team.items()}
     # 6. 训练循环
     print("=" * 50)
@@ -101,14 +118,15 @@ def train():
         a,b = calculate_elo_with_draw(
                                 id2score[sample["team_a_id"]],
                                 id2score[sample["team_b_id"]],
-                                sample["labels"]
-                                )
-        id2score[sample["team_a_id"]], id2score[sample["team_2_id"]] = a,b
+                                sample['diff'],
+                                sample["label"]
+        )
+        id2score[sample["team_a_id"]], id2score[sample["team_b_id"]] = a,b
     preds,labels = [],[]
     for sample in val_dataset:
         pred = 2 if id2score[sample["team_a_id"]] > id2score[sample["team_b_id"]] \
                 else ( 1 if id2score[sample["team_a_id"]] == id2score[sample["team_b_id"]] else 0)
-        label = sample["labels"]
+        label = sample["label"]
         preds.append(pred)
         labels.append(label)
     val_acc = accuracy_score(preds,labels)
@@ -139,12 +157,14 @@ def test():
     for sample in test_dataset:
         pred = 2 if id2score[sample["team_a_id"]] > id2score[sample["team_b_id"]] \
             else (1 if id2score[sample["team_a_id"]] == id2score[sample["team_b_id"]] else 0)
-        label = sample["labels"]
+        label = sample["label"]
         preds.append(pred)
         labels.append(label)
     # 5. 详细分类报告
     print("\n" + "=" * 50)
     print("分类报告:")
+    test_acc = accuracy_score(preds, labels)
+    print(f"最佳验证准确率: {test_acc:.4f}")
     print(classification_report(
         labels, preds,
         target_names=['负', '平', '胜'],
@@ -162,5 +182,6 @@ if __name__ == "__main__":
 
     if args.mode == 'train':
         train()
+        test()
     else:
         test()

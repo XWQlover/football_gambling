@@ -270,7 +270,16 @@ def test():
     print("开始测试...")
     criterion = nn.CrossEntropyLoss()
     test_loss, test_acc, predictions, labels = evaluate(model, test_loader, criterion)
-    
+    test_datas = []
+    for team_a, sub_data in data.groupby("主场"):
+        # 修复数据泄露：按时间排序，确保序列顺序正确
+        sub_data = sub_data.sort_values("时间", ascending=True)
+        sub_data = sub_data[(sub_data["时间"]>=test_start_time) & (sub_data["时间"]<test_end_time)]
+        test_datas.append(sub_data)
+
+    test_datas = pd.concat(test_datas,axis=0)
+    test_datas["pred"] = predictions
+    test_datas.to_csv("data/eval/test_datas.csv",index=False)
     print(f"\n测试结果:")
     print(f"测试损失: {test_loss:.4f}")
     print(f"测试准确率: {test_acc:.4f}")

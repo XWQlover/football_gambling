@@ -198,7 +198,8 @@ class MyDataset2(Dataset):
             processed_samples.append({
                 "team_a_id": team_a_id,
                 "team_b_id": team_b_id,
-                "labels": row["label"],
+                "diff": row["主场得分"] - row["客场得分"],
+                "label": row["label"],
             })
 
         return processed_samples
@@ -213,7 +214,8 @@ class MyDataset2(Dataset):
         return {
             "team_a_id": sample["team_a_id"],
             "team_b_id": sample["team_b_id"],
-            "label": sample["labels"]
+            "diff": sample["diff"],
+            "label": sample["label"]
         }
 
 # ===================== 测试代码（验证Dataset可运行） =====================
