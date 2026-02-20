@@ -10,6 +10,7 @@ import trueskill
 from tqdm import tqdm
 import os
 import lightgbm as lgb
+from utils.util import revenue2
 
 # 配置参数
 config = {
@@ -31,7 +32,7 @@ data2["赔率押注"] = data2.apply(lambda x:1 if x["胜"]  == min(x[["胜","负
 # data2["负赔率"] = data2.apply(lambda x:x["负"]/sum(x[["胜","负","平"]]),axis=1)
 
 data2 = pd.merge(data1,data2,left_on="id",right_on="id",how="left")
-data = pd.merge(data2,data[["id","时间","label",'胜预测值','平预测值','负预测值']],left_on="id",right_on="id",how="left")
+data = pd.merge(data2,data[["id","时间","label",'胜赔率','平赔率','负赔率','胜预测值','平预测值','负预测值']],left_on="id",right_on="id",how="left")
 data = data.sort_values("时间", ascending=True)
 data["概率押注"] = data.apply(lambda x:1 if x["胜概率"]  == min(x[["胜概率","负概率","平概率"]]) else 0,axis=1)
 data["预测押注"] = data.apply(lambda x:1 if x["胜预测值"]  == min(x[["胜预测值","负预测值","平预测值"]]) else 0,axis=1)
@@ -125,6 +126,7 @@ def train():
     val_acc = accuracy_score(val_data["赔率押注"], val_data["label"])
     print(f"赔率押注准确率: {val_acc:.4f}")
 
+
 def test():
     """测试主函数"""
     # 1. 加载数据集（修复数据泄露：只传入测试时间段之前的数据）
@@ -159,6 +161,7 @@ def test():
         target_names=['负平', '胜'],
         digits=4
     ))
+    revenue2(preds,labels,test_data[['胜赔率','平赔率','负赔率']])
 
 if __name__ == "__main__":
     import argparse
